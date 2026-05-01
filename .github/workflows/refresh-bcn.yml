@@ -1,0 +1,45 @@
+name: Refresh BCN parking zones
+
+# Cron: cada lunes 04:00 UTC (= 06:00 hora España en verano).
+# Cambios típicos del Ajuntament son trimestrales, semanal es de
+# sobra. Si quieres más/menos frecuencia, edita la línea `cron:`.
+#
+# Manual trigger via GitHub UI: Actions tab → "Refresh BCN parking
+# zones" → "Run workflow" → main.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      # Necesario para que el workflow pueda commit & push back.
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run ETL
+        run: node scripts/build-bcn.mjs
+
+      - name: Commit + push si hay cambios
+        run: |
+          git config user.name "apparcar-data-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add parkingZonesDirect-bcn.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios — nada que commitear."
+            exit 0
+          fi
+          COUNT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('parkingZonesDirect-bcn.json','utf8')).length)")
+          git commit -m "Auto-refresh BCN: ${COUNT} tramos ($(date -u +%Y-%m-%d))"
+          git push
